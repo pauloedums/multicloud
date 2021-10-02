@@ -1,0 +1,144 @@
+---
+# PLAY PARA CONFIGURACAO DA WORKSPACE MULTICLOUD
+- hosts: multicloud
+  name: Configurando a WorkSpace
+  remote_user: vagrant
+  become: yes
+  tasks:
+    - name: Ajustando Timezone
+      timezone:
+        name: America/Sao_Paulo
+
+    - name: Adicionando Key do Repositorio do GCLOUD
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+    - name: Adicionando Key do Repositorio do AZ
+      apt_key:
+        url: https://packages.microsoft.com/keys/microsoft.asc 
+        state: present
+
+    - name: Adicionando Key do Repositorio do Terraform
+      apt_key:
+        url: https://apt.releases.hashicorp.com/gpg 
+        state: present
+
+    - name: Adicionando o Repositório do Google
+      apt_repository:
+        repo: "deb http://packages.cloud.google.com/apt cloud-sdk main"
+        update_cache: no
+
+    - name: Adicionando o Repositório do Azure
+      apt_repository:
+        repo: "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ {{ ansible_distribution_release }} main" 
+        update_cache: no
+
+    - name: Adicionando o Repositório do Git
+      apt_repository:
+        repo: 'ppa:git-core/ppa'
+        update_cache: no
+
+    - name: Adicionando o Repositório do Terraform
+      apt_repository:
+        repo: "deb [arch=amd64] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main" 
+        update_cache: yes
+
+
+    ############# Instalação do Docker
+
+    - name: Adicionando Key do Repositorio do Docker
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Adicionando o Repositório do Docker
+      apt_repository:
+        repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        update_cache: yes
+
+    - name: Instalação do GCLOUD, AZ, Terraform, Docker e outras dependências
+      apt:
+        pkg: ['google-cloud-sdk','unzip','azure-cli', 'terraform', 'docker-ce', 'build-essential', 'virtualenv', 'zlib1g-dev', 'libssl-dev', 'libncurses-dev', 'libffi-dev', 'libsqlite3-dev', 'libreadline-dev', 'libbz2-dev', 'ruby', 'python-is-python3']
+        state: present
+
+    - name: Update do Git 
+      apt:
+        name: git
+        state: latest
+
+    ############# Instalação do AWS CLI
+
+    - name: Verificando se o AWS CLI está instalado
+      stat:
+        path: /usr/local/bin/aws
+      register: aws
+
+    - name: Download do AWS CLI
+      get_url:
+        url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+        dest: /tmp/awscliv2.zip
+      when: aws.stat.exists == false
+
+    - name: Extração do Binário no PATH
+      unarchive:
+        src: /tmp/awscliv2.zip
+        dest: "/tmp"
+        copy: no
+      when: aws.stat.exists == false
+
+    - name: Instalação do AWS CLI 
+      command: "bash /tmp/aws/install"
+      when: aws.stat.exists == false
+
+    ############# Instalação do AWS EB CLI
+
+    - name: Verificando se o EB CLI está instalado
+      stat:
+        path: /usr/local/bin/eb
+      register: eb
+
+    - name: Clone do Repositório do EB CLI 
+      git:
+        repo: 'https://github.com/aws/aws-elastic-beanstalk-cli-setup.git'
+        dest: /tmp/aws-eb
+      when: eb.stat.exists == false
+
+    - name: Instalação do AWS EB CLI
+      command: "/tmp/aws-eb/scripts/bundled_installer"
+      become: yes
+      become_user: vagrant
+      when: eb.stat.exists == false
+
+    - name: Copiando o Binário para o bin
+      command: cp /home/vagrant/.ebcli-virtual-env/executables/eb /usr/local/bin
+      when: eb.stat.exists == false
+
+    - name: Adicionar Usuario Vagrant no Grupo Docker
+      user:
+        name: vagrant
+        comment: Vagrant User
+        groups: docker
+
+    ############# Setup do Ambiente de Desenvolvimento Python
+    - name: Instalação do Pip Python
+      apt:
+        pkg: ['python3-pip']
+        state: present
+
+    - name: Install virtualenv
+      pip:
+        name: 
+          - virtualenv
+          - virtualenvwrapper
+
+    - name: Setup do Virtualenv
+      lineinfile:
+        dest: /home/vagrant/.bashrc
+        line: "{{ item.line }}"
+      loop:
+        - { line: '#Virtualenvwrapper settings:'}
+        - { line: 'export VIRTUALENVWRAPPER_PYTHON=/usr/bin/python3'}
+        - { line: 'export WORKON_HOME=$HOME/.virtualenv'}
+        - { line: 'export VIRTUALENVWRAPPER_VIRTUALENV=/usr/bin/virtualenv'}
+        - { line: 'source /usr/local/bin/virtualenvwrapper.sh'}
